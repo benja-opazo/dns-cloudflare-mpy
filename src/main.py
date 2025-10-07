@@ -11,6 +11,6 @@ wlan.connect('<ssid>', '-')
 for i in range(10):
 
 	pin.on()
-	time.sleep(0.5)
-	pin.off()
 	time.sleep(1)
+	pin.off()
+	time.sleep(0.5)
