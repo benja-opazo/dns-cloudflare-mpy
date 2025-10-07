@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Configuration Portal</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom font and basic body styling */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <!-- Main Configuration Card -->
+    <div class="w-full max-w-lg bg-white shadow-2xl rounded-xl overflow-hidden">
+        
+        <!-- Header -->
+        <div class="p-6 bg-indigo-600">
+            <h1 class="text-3xl font-bold text-white">Device Setup</h1>
+            <p class="text-indigo-200 mt-1">Configure Wi-Fi and Cloudflare access.</p>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="flex border-b border-gray-200">
+            <button id="tab-wifi-btn" 
+                    onclick="showTab('wifi')"
+                    class="tab-btn flex-1 py-3 px-4 text-sm font-medium focus:outline-none transition-colors duration-200 ease-in-out border-b-2 border-transparent text-gray-500 hover:text-indigo-600 hover:border-indigo-600"
+                    data-tab="wifi">
+                Wi-Fi Connection
+            </button>
+            <button id="tab-cloudflare-btn" 
+                    onclick="showTab('cloudflare')"
+                    class="tab-btn flex-1 py-3 px-4 text-sm font-medium focus:outline-none transition-colors duration-200 ease-in-out border-b-2 border-transparent text-gray-500 hover:text-indigo-600 hover:border-indigo-600"
+                    data-tab="cloudflare">
+                Cloudflare Token
+            </button>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="p-6 space-y-6">
+            
+            <!-- Wi-Fi Configuration Tab -->
+            <div id="tab-wifi" class="tab-content space-y-6">
+                <h2 class="text-2xl font-semibold text-gray-800">Wi-Fi Credentials</h2>
+                
+                <!-- Status Display -->
+                <div class="space-y-3 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+                    <p class="text-sm font-medium text-indigo-700">Current Status:</p>
+                    <p class="text-lg font-bold text-indigo-900">Connected to: <span id="current-ssid">{{CURRENT_SSID}}</span></p>
+                    <p class="text-sm text-gray-600">Saved credentials: <span id="saved-ssid" class="font-semibold">{{SAVED_SSID}}</span></p>
+                    <p class="text-xs text-gray-500 italic">If current and saved SSIDs differ, the device will try the saved one on reboot.</p>
+                </div>
+
+                <!-- Wi-Fi Form -->
+                <form id="wifi-form" action="/save-wifi" method="POST" class="space-y-4">
+                    <div>
+                        <label for="ssid" class="block text-sm font-medium text-gray-700 mb-1">Wi-Fi Network (SSID)</label>
+                        <input type="text" id="ssid" name="ssid" required class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Enter network name">
+                    </div>
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                        <input type="password" id="password" name="password" required class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Enter password">
+                    </div>
+                    <button type="submit" class="w-full py-3 px-4 border border-transparent rounded-lg shadow-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150 ease-in-out">
+                        Save Wi-Fi & Reboot
+                    </button>
+                </form>
+            </div>
+
+            <!-- Cloudflare Token Tab -->
+            <div id="tab-cloudflare" class="tab-content hidden space-y-6">
+                <h2 class="text-2xl font-semibold text-gray-800">Cloudflare Access Token</h2>
+                <p class="text-gray-600">Enter your generated Cloudflare API Token for secure connectivity.</p>
+
+                <!-- Cloudflare Form -->
+                <form id="cloudflare-form" action="/save-cf-token" method="POST" class="space-y-4">
+                    <!-- Placeholder for displaying saved token information -->
+                    <div class="p-3 bg-yellow-50 rounded-lg border border-yellow-200 text-sm text-gray-700">
+                        Current Saved Token (Hidden): 
+                        <span class="font-mono text-xs">{{SAVED_CLOUDFLARE_TOKEN_MASKED}}</span>
+                    </div>
+
+                    <div>
+                        <label for="cf-token" class="block text-sm font-medium text-gray-700 mb-1">Cloudflare Token</label>
+                        <input type="text" id="cf-token" name="cf_token" required class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="e.g., v1.0-abc-xyz-123">
+                        <p class="mt-1 text-xs text-gray-500">Ensure this token has the necessary permissions.</p>
+                    </div>
+                    <button type="submit" class="w-full py-3 px-4 border border-transparent rounded-lg shadow-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out">
+                        Save Cloudflare Token
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize the first tab as active
+            showTab('wifi');
+        });
+
+        function showTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+
+            // Deactivate all tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('text-indigo-600', 'border-indigo-600');
+                btn.classList.add('text-gray-500', 'border-transparent');
+            });
+
+            // Show the selected tab content
+            const selectedContent = document.getElementById(`tab-${tabName}`);
+            if (selectedContent) {
+                selectedContent.classList.remove('hidden');
+            }
+
+            // Activate the selected tab button
+            const selectedButton = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+            if (selectedButton) {
+                selectedButton.classList.remove('text-gray-500', 'border-transparent');
+                selectedButton.classList.add('text-indigo-600', 'border-indigo-600');
+            }
+        }
+    </script>
+
+</body>
+</html>
