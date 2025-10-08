@@ -50,7 +50,7 @@
                 
                 <!-- Status Display -->
                 <div class="space-y-3 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
-                    <p class="text-sm font-medium text-indigo-700">Current Status:</p>
+                    <p class="text-sm font-medium text-indigo-700">Current Status: <span id="current-status">{{CURRENT_STATUS}}</span><p>
                     <p class="text-lg font-bold text-indigo-900">Connected to: <span id="current-ssid">{{CURRENT_SSID}}</span></p>
                     <p class="text-sm text-gray-600">Saved credentials: <span id="saved-ssid" class="font-semibold">{{SAVED_SSID}}</span></p>
                     <p class="text-xs text-gray-500 italic">If current and saved SSIDs differ, the device will try the saved one on reboot.</p>
