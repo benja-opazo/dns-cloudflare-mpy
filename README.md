@@ -1,24 +1,22 @@
-# Prerequisites
+#dns-cloudflare-mpy
+
+## Prerequisites
 
 - `uv`
 
-# Initialization
+## Initialization
 
-## Project Dependencies
+### Project Dependencies
 
-To initialize the project, create a virtual environment with
+To initialize the project
 
-`uv venv`
+`uv sync`
 
-then activate with
+then activate with:
 
-` .venv\Scripts\activate`
+`source .venv/bin/activate`
 
-and install the dependencies with
-
-`uv pip install -r pyproject.toml`
-
-## MicroPython Stubs
+### MicroPython Stubs
 
 With the environment activated, install the Stubs with
 
@@ -26,7 +24,7 @@ With the environment activated, install the Stubs with
 
 Create a `.vscode` folder with a `settings.json` files:
 
-```
+```json
 {
     "python.languageServer": "Pylance",
     "python.analysis.typeCheckingMode": "basic",
@@ -37,5 +35,14 @@ Create a `.vscode` folder with a `settings.json` files:
         "typings"
     ],
 } 
+```
+
+## Installation on ESP32
+
+Using mpremote, copy the files inside the src folder, excluding the `egg-info` folder. The following code should work.
+
+```bash
+cd src
+mpremote fs cp -r . :/
 ```
 

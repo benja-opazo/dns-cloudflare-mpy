@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Configuration Portal</title>
+    <script src="/tailwind.css"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <div class="w-full max-w-lg bg-white shadow-2xl rounded-xl overflow-hidden">
+
+        <!-- Header -->
+        <div class="p-6 bg-indigo-600">
+            <h1 class="text-3xl font-bold text-white">Device Setup</h1>
+            <p class="text-indigo-200 mt-1">Configure Wi-Fi and Cloudflare DNS.</p>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="flex border-b border-gray-200">
+            <button id="tab-wifi-btn"
+                    onclick="showTab('wifi')"
+                    class="tab-btn flex-1 py-3 px-4 text-sm font-medium focus:outline-none transition-colors duration-200 border-b-2 border-transparent text-gray-500 hover:text-indigo-600 hover:border-indigo-600"
+                    data-tab="wifi">
+                Wi-Fi Connection
+            </button>
+            <button id="tab-cloudflare-btn"
+                    onclick="showTab('cloudflare')"
+                    class="tab-btn flex-1 py-3 px-4 text-sm font-medium focus:outline-none transition-colors duration-200 border-b-2 border-transparent text-gray-500 hover:text-indigo-600 hover:border-indigo-600"
+                    data-tab="cloudflare">
+                Cloudflare DNS
+            </button>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="p-6 space-y-6">
+
+            <!-- ── Wi-Fi Tab ── -->
+            <div id="tab-wifi" class="tab-content space-y-6">
+                <h2 class="text-2xl font-semibold text-gray-800">Wi-Fi Credentials</h2>
+
+                <!-- Status -->
+                <div class="space-y-2 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+                    <p class="text-sm font-medium text-indigo-700">
+                        Mode: <span class="font-bold">{{CURRENT_STATUS}}</span>
+                    </p>
+                    <p class="text-sm text-gray-700">
+                        IP Address: <span class="font-mono font-semibold">{{CURRENT_IP}}</span>
+                    </p>
+                    <p class="text-sm text-gray-700">
+                        Connected SSID: <span class="font-semibold">{{CURRENT_SSID}}</span>
+                    </p>
+                    <p class="text-sm text-gray-500">
+                        Saved SSID: <span class="font-semibold">{{SAVED_SSID}}</span>
+                    </p>
+                    <p class="text-xs text-gray-400 italic">
+                        Saving new credentials will reboot the device.
+                    </p>
+                </div>
+
+                <!-- Form -->
+                <form id="wifi-form" action="/save-wifi" method="POST" class="space-y-4">
+                    <div>
+                        <label for="ssid-select" class="block text-sm font-medium text-gray-700 mb-1">
+                            Wi-Fi Network (SSID)
+                        </label>
+                        <div class="flex gap-2">
+                            <select id="ssid-select" name="ssid" required
+                                    onchange="onSsidChange()"
+                                    class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+                                <option value="">Scanning for networks...</option>
+                            </select>
+                            <button type="button" id="scan-btn" onclick="scanWifi()"
+                                    class="px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition duration-150 whitespace-nowrap">
+                                Refresh
+                            </button>
+                        </div>
+                        <!-- Shown only when "Other..." is selected -->
+                        <div id="ssid-manual-wrap" class="hidden mt-2">
+                            <input type="text" id="ssid-manual"
+                                   class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                                   placeholder="Enter hidden network name">
+                        </div>
+                    </div>
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-gray-700 mb-1">
+                            Password
+                        </label>
+                        <div class="flex gap-2">
+                            <input type="password" id="password" name="password"
+                                   class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                                   placeholder="Enter password">
+                            <button type="button" onclick="togglePassword('password', this)"
+                                    class="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 border border-gray-300 rounded-lg hover:bg-gray-200 transition duration-150 whitespace-nowrap">
+                                Show
+                            </button>
+                        </div>
+                    </div>
+                    <button type="submit"
+                            class="w-full py-3 px-4 rounded-lg shadow-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150">
+                        Save Wi-Fi &amp; Reboot
+                    </button>
+                </form>
+            </div>
+
+            <!-- ── Cloudflare Tab ── -->
+            <div id="tab-cloudflare" class="tab-content hidden space-y-6">
+                <h2 class="text-2xl font-semibold text-gray-800">Cloudflare DNS</h2>
+                <p class="text-gray-600 text-sm">
+                    The API token must have <strong>DNS:Edit</strong> permissions for the target zone.
+                </p>
+
+                <!-- Saved config summary -->
+                <div class="p-4 bg-yellow-50 rounded-lg border border-yellow-200 space-y-1 text-sm text-gray-700">
+                    <p>API Token: <span class="font-mono text-xs">{{SAVED_CF_TOKEN_MASKED}}</span></p>
+                    <p>Zone ID: <span class="font-mono text-xs">{{SAVED_CF_ZONE_ID}}</span></p>
+                    <p>DNS Record: <span class="font-mono text-xs">{{SAVED_CF_RECORD}}</span></p>
+                </div>
+
+                <!-- Form -->
+                <form action="/save-cloudflare" method="POST" class="space-y-4">
+                    <div>
+                        <label for="cf-token" class="block text-sm font-medium text-gray-700 mb-1">
+                            API Token
+                        </label>
+                        <input type="password" id="cf-token" name="cf_token"
+                               class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                               placeholder="Leave blank to keep current token">
+                        <p class="mt-1 text-xs text-gray-500">
+                            Leave blank to keep the existing token.
+                        </p>
+                    </div>
+                    <div>
+                        <label for="cf-zone-id" class="block text-sm font-medium text-gray-700 mb-1">
+                            Zone ID
+                        </label>
+                        <input type="text" id="cf-zone-id" name="cf_zone_id"
+                               class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                               placeholder="e.g. 023e105f4ecef8ad9ca31a8372d0c353">
+                        <p class="mt-1 text-xs text-gray-500">
+                            Found in the Cloudflare dashboard under your domain's Overview tab.
+                        </p>
+                    </div>
+                    <div>
+                        <label for="cf-record" class="block text-sm font-medium text-gray-700 mb-1">
+                            DNS Record Name
+                        </label>
+                        <input type="text" id="cf-record" name="cf_record_name"
+                               class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                               placeholder="e.g. home.example.com">
+                        <p class="mt-1 text-xs text-gray-500">
+                            The A record that will be updated with this device's public IP.
+                        </p>
+                    </div>
+                    <button type="submit"
+                            class="w-full py-3 px-4 rounded-lg shadow-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150">
+                        Save Cloudflare Config
+                    </button>
+                </form>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            showTab('wifi');
+            scanWifi();
+
+            // Before submitting, copy the manually typed SSID into the select
+            document.getElementById('wifi-form').addEventListener('submit', function (e) {
+                var select = document.getElementById('ssid-select');
+                if (select.value === '__other__') {
+                    var manual = document.getElementById('ssid-manual').value.trim();
+                    if (!manual) {
+                        e.preventDefault();
+                        document.getElementById('ssid-manual').focus();
+                        return;
+                    }
+                    var opt = document.createElement('option');
+                    opt.value = manual;
+                    select.appendChild(opt);
+                    select.value = manual;
+                }
+            });
+        });
+
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(function (el) {
+                el.classList.add('hidden');
+            });
+            document.querySelectorAll('.tab-btn').forEach(function (btn) {
+                btn.classList.remove('text-indigo-600', 'border-indigo-600');
+                btn.classList.add('text-gray-500', 'border-transparent');
+            });
+            var content = document.getElementById('tab-' + tabName);
+            if (content) content.classList.remove('hidden');
+            var btn = document.querySelector('.tab-btn[data-tab="' + tabName + '"]');
+            if (btn) {
+                btn.classList.remove('text-gray-500', 'border-transparent');
+                btn.classList.add('text-indigo-600', 'border-indigo-600');
+            }
+        }
+
+        function togglePassword(inputId, btn) {
+            var input = document.getElementById(inputId);
+            if (input.type === 'password') {
+                input.type = 'text';
+                btn.textContent = 'Hide';
+            } else {
+                input.type = 'password';
+                btn.textContent = 'Show';
+            }
+        }
+
+        function onSsidChange() {
+            var select = document.getElementById('ssid-select');
+            var wrap   = document.getElementById('ssid-manual-wrap');
+            if (select.value === '__other__') {
+                wrap.classList.remove('hidden');
+                document.getElementById('ssid-manual').focus();
+            } else {
+                wrap.classList.add('hidden');
+            }
+        }
+
+        function scanWifi() {
+            var select = document.getElementById('ssid-select');
+            var btn    = document.getElementById('scan-btn');
+
+            btn.disabled = true;
+            btn.textContent = 'Scanning...';
+            select.innerHTML = '<option value="">Scanning for networks...</option>';
+            document.getElementById('ssid-manual-wrap').classList.add('hidden');
+
+            fetch('/scan-wifi')
+                .then(function (res) { return res.json(); })
+                .then(function (ssids) {
+                    if (ssids.length) {
+                        select.innerHTML = '<option value="">-- Select a network --</option>';
+                        ssids.forEach(function (ssid) {
+                            var opt = document.createElement('option');
+                            opt.value = ssid;
+                            opt.textContent = ssid;
+                            select.appendChild(opt);
+                        });
+                    } else {
+                        select.innerHTML = '<option value="">No networks found</option>';
+                    }
+                    var other = document.createElement('option');
+                    other.value = '__other__';
+                    other.textContent = 'Other (hidden network)...';
+                    select.appendChild(other);
+                })
+                .catch(function () {
+                    select.innerHTML = '<option value="__other__">Scan failed — enter manually</option>';
+                    onSsidChange();
+                })
+                .finally(function () {
+                    btn.disabled = false;
+                    btn.textContent = 'Refresh';
+                });
+        }
+    </script>
+
+</body>
+</html>
