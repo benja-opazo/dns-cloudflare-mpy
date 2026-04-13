@@ -18,27 +18,36 @@ class WiFiManager:
         self.ap.active(True)
         self.ap.config(essid=AP_SSID, password=AP_PASSWORD)
         time.sleep(1)
-        ip = self.ap.ifconfig()[0]
+        cfg = self.ap.ifconfig()
         self._mode = 'ap'
-        print(f'AP active — SSID: {AP_SSID}  IP: {ip}')
-        return ip
+        print(f'AP active — SSID: {AP_SSID}  IP: {cfg[0]}  subnet: {cfg[1]}  gw: {cfg[2]}')
+        return cfg[0]
 
-    def connect_sta(self, ssid, password):
+    def connect_sta(self, ssid, password, hostname=None):
         print(f'Connecting to "{ssid}"...')
         self.ap.active(False)
         self.sta.active(True)
+        if hostname:
+            try:
+                self.sta.config(dhcp_hostname=hostname)
+                print(f'  Hostname: {hostname}')
+            except Exception as e:
+                print(f'  Hostname set failed: {e}')
         if self.sta.isconnected():
+            print('STA already connected — disconnecting first')
             self.sta.disconnect()
             time.sleep(1)
         self.sta.connect(ssid, password)
-        for _ in range(CONNECT_TIMEOUT):
+        for i in range(CONNECT_TIMEOUT):
+            status = self.sta.status()
+            print(f'  [{i+1}/{CONNECT_TIMEOUT}] status={status}')
             if self.sta.isconnected():
-                ip = self.sta.ifconfig()[0]
+                cfg = self.sta.ifconfig()
                 self._mode = 'client'
-                print(f'Connected — IP: {ip}')
-                return ip
+                print(f'Connected — IP: {cfg[0]}  subnet: {cfg[1]}  gw: {cfg[2]}  dns: {cfg[3]}')
+                return cfg[0]
             time.sleep(1)
-        print('Connection failed')
+        print(f'Connection failed after {CONNECT_TIMEOUT}s — final status={self.sta.status()}')
         return None
 
     def is_connected(self):

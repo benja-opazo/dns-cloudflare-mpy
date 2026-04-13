@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ESP32 Configuration Portal</title>
+    <link rel="icon" type="image/png" href="/logo.png">
     <script src="/tailwind.css"></script>
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
@@ -32,6 +33,12 @@
                     class="tab-btn flex-1 py-3 px-4 text-sm font-medium focus:outline-none transition-colors duration-200 border-b-2 border-transparent text-gray-500 hover:text-indigo-600 hover:border-indigo-600"
                     data-tab="cloudflare">
                 Cloudflare DNS
+            </button>
+            <button id="tab-status-btn"
+                    onclick="showTab('status')"
+                    class="tab-btn flex-1 py-3 px-4 text-sm font-medium focus:outline-none transition-colors duration-200 border-b-2 border-transparent text-gray-500 hover:text-indigo-600 hover:border-indigo-600"
+                    data-tab="status">
+                Status
             </button>
         </div>
 
@@ -104,6 +111,24 @@
                         Save Wi-Fi &amp; Reboot
                     </button>
                 </form>
+
+                <!-- Hostname -->
+                <div class="border-t border-gray-200 pt-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-1">Device Hostname</h3>
+                    <p class="text-sm text-gray-500 mb-3">
+                        Announced to the router via DHCP. Takes effect on the next Wi-Fi connection.
+                    </p>
+                    <form action="/save-hostname" method="POST" class="flex gap-2">
+                        <input type="text" name="hostname"
+                               value="{{SAVED_HOSTNAME}}"
+                               class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                               placeholder="esp32-dns">
+                        <button type="submit"
+                                class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition duration-150 whitespace-nowrap">
+                            Save
+                        </button>
+                    </form>
+                </div>
             </div>
 
             <!-- ── Cloudflare Tab ── -->
@@ -162,109 +187,44 @@
                 </form>
             </div>
 
+            <!-- ── Status Tab ── -->
+            <div id="tab-status" class="tab-content hidden space-y-4">
+                <h2 class="text-2xl font-semibold text-gray-800">Status</h2>
+
+                <!-- Public IP -->
+                <div class="space-y-1 p-4 bg-green-50 rounded-lg border border-green-200">
+                    <p class="text-sm font-medium text-green-700">Internet IP Address</p>
+                    <p id="public-ip-display" class="text-2xl font-mono font-bold text-gray-800">—</p>
+                    <p id="public-ip-updated" class="text-xs text-gray-400 italic"></p>
+                </div>
+
+                <!-- Cloudflare status -->
+                <div class="space-y-3 p-4 bg-yellow-50 rounded-lg border border-yellow-200 text-sm text-gray-700">
+                    <div class="flex items-center justify-between">
+                        <span class="font-medium text-yellow-700">API Key</span>
+                        <span id="cf-status-display" class="font-semibold">—</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="font-medium text-yellow-700">IP in Zone</span>
+                        <span id="zone-ip-display" class="font-mono font-semibold">—</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="font-medium text-yellow-700">Last DNS Update</span>
+                        <span id="last-dns-update-display" class="font-mono">—</span>
+                    </div>
+                </div>
+
+                <button type="button" onclick="refreshStatus()"
+                        id="refresh-ip-btn"
+                        class="w-full py-3 px-4 rounded-lg shadow-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150">
+                    Refresh
+                </button>
+            </div>
+
         </div>
     </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            showTab('wifi');
-            scanWifi();
-
-            // Before submitting, copy the manually typed SSID into the select
-            document.getElementById('wifi-form').addEventListener('submit', function (e) {
-                var select = document.getElementById('ssid-select');
-                if (select.value === '__other__') {
-                    var manual = document.getElementById('ssid-manual').value.trim();
-                    if (!manual) {
-                        e.preventDefault();
-                        document.getElementById('ssid-manual').focus();
-                        return;
-                    }
-                    var opt = document.createElement('option');
-                    opt.value = manual;
-                    select.appendChild(opt);
-                    select.value = manual;
-                }
-            });
-        });
-
-        function showTab(tabName) {
-            document.querySelectorAll('.tab-content').forEach(function (el) {
-                el.classList.add('hidden');
-            });
-            document.querySelectorAll('.tab-btn').forEach(function (btn) {
-                btn.classList.remove('text-indigo-600', 'border-indigo-600');
-                btn.classList.add('text-gray-500', 'border-transparent');
-            });
-            var content = document.getElementById('tab-' + tabName);
-            if (content) content.classList.remove('hidden');
-            var btn = document.querySelector('.tab-btn[data-tab="' + tabName + '"]');
-            if (btn) {
-                btn.classList.remove('text-gray-500', 'border-transparent');
-                btn.classList.add('text-indigo-600', 'border-indigo-600');
-            }
-        }
-
-        function togglePassword(inputId, btn) {
-            var input = document.getElementById(inputId);
-            if (input.type === 'password') {
-                input.type = 'text';
-                btn.textContent = 'Hide';
-            } else {
-                input.type = 'password';
-                btn.textContent = 'Show';
-            }
-        }
-
-        function onSsidChange() {
-            var select = document.getElementById('ssid-select');
-            var wrap   = document.getElementById('ssid-manual-wrap');
-            if (select.value === '__other__') {
-                wrap.classList.remove('hidden');
-                document.getElementById('ssid-manual').focus();
-            } else {
-                wrap.classList.add('hidden');
-            }
-        }
-
-        function scanWifi() {
-            var select = document.getElementById('ssid-select');
-            var btn    = document.getElementById('scan-btn');
-
-            btn.disabled = true;
-            btn.textContent = 'Scanning...';
-            select.innerHTML = '<option value="">Scanning for networks...</option>';
-            document.getElementById('ssid-manual-wrap').classList.add('hidden');
-
-            fetch('/scan-wifi')
-                .then(function (res) { return res.json(); })
-                .then(function (ssids) {
-                    if (ssids.length) {
-                        select.innerHTML = '<option value="">-- Select a network --</option>';
-                        ssids.forEach(function (ssid) {
-                            var opt = document.createElement('option');
-                            opt.value = ssid;
-                            opt.textContent = ssid;
-                            select.appendChild(opt);
-                        });
-                    } else {
-                        select.innerHTML = '<option value="">No networks found</option>';
-                    }
-                    var other = document.createElement('option');
-                    other.value = '__other__';
-                    other.textContent = 'Other (hidden network)...';
-                    select.appendChild(other);
-                })
-                .catch(function () {
-                    select.innerHTML = '<option value="__other__">Scan failed — enter manually</option>';
-                    onSsidChange();
-                })
-                .finally(function () {
-                    btn.disabled = false;
-                    btn.textContent = 'Refresh';
-                });
-        }
-    </script>
+    <script src="/app.js"></script>
 
 </body>
 </html>

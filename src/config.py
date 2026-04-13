@@ -45,6 +45,13 @@ class ConfigManager:
     def get_wifi_password(self):
         return self._cfg.get('wifi', {}).get('password', '')
 
+    def get_hostname(self):
+        return self._cfg.get('wifi', {}).get('hostname', 'esp32-dns')
+
+    def set_hostname(self, hostname):
+        self._cfg.setdefault('wifi', {})['hostname'] = hostname
+        return self.save()
+
     def get_cf_api_key(self):
         return self._cfg.get('cloudflare', {}).get('api_key', '')
 
