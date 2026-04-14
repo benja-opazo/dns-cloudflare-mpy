@@ -8,3 +8,6 @@ dependencies = [
     "mpremote >=1.28.0",
     "esptool>=4.10.0",
 ]
+
+[tool.distutils.egg_info]
+egg_base = "target"

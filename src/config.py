@@ -14,7 +14,7 @@ class ConfigManager:
                 self._cfg = json.load(f)
         except Exception:
             self._cfg = {
-                'wifi': {'ssid': '', 'password': ''},
+                'wifi': {'ssid': '', 'password': '', 'hostname': 'esp32-dns'},
                 'cloudflare': {'api_key': '', 'zone_id': '', 'record_name': ''}
             }
 
@@ -28,7 +28,9 @@ class ConfigManager:
             return False
 
     def set_wifi(self, ssid, password):
-        self._cfg['wifi'] = {'ssid': ssid, 'password': password}
+        wifi = self._cfg.setdefault('wifi', {})
+        wifi['ssid'] = ssid
+        wifi['password'] = password
         return self.save()
 
     def set_cloudflare(self, api_key, zone_id, record_name):
