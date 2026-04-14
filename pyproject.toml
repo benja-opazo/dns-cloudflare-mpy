@@ -1,7 +1,7 @@
 [project]
 name = "dns-cloudflare-mpy"
 version = "0.1.0"
-description = "Add your description here"
+description = "A Micropython implementation to update cloudflare DNS records using an ESP32"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
