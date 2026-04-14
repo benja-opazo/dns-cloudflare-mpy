@@ -3,9 +3,9 @@
 ![Logo](./imgs/logo.png)
 
 > [!NOTE]
-> This App has been partially Vibed Coded. .
-> I made this app for my personal use, but I am sharing it because it works perfectly for my use case, and maybe its useful for others.
-> If you have an issue with the app being Vibe Coded, please refrain to make any comments. Thanks.
+> This app has been partially vibe-coded.
+> I made it for my personal use, but I am sharing it because it works perfectly for my use case and may be useful for others.
+> If you have an issue with the app being vibe-coded, please refrain from making any comments. Thanks.
 
 ## Prerequisites
 
@@ -30,7 +30,7 @@ With the environment activated, install the Stubs with
 
 `pip install -U micropython-esp32-stubs==1.26.0.post1 --target typings --no-user`
 
-Create a `.vscode` folder with a `settings.json` files:
+Create a `.vscode` folder with a `settings.json` file:
 
 ```json
 {
@@ -58,9 +58,9 @@ mpremote fs cp -r . :/
 
 After uploading the project files to the ESP-32, do a Soft Reset and connect to the microcontroller AP. The AP SSID is `ESP32-DNSConfig`.
 
-Once connected, go to `192.168.4.1` and the Project Main Page should load. If its not loading, check that you are connecting with `http` and not `https`. If you are still having trouble connecting, you can add the port `80` explicitly in the URL: `192.168.4.1:80`.
+Once connected, go to `192.168.4.1` and the main page should load. If it's not loading, check that you are connecting with `http` and not `https`. If you are still having trouble, you can add port `80` explicitly: `192.168.4.1:80`.
 
-Once inside, you can configure the Wifi, Cloudflare credentials and check the status of the program.
+Once inside, you can configure the Wi-Fi and Cloudflare credentials, and check the status of the program.
 
 <p float="left">
   <img src="./imgs/wifi_credentials.jpg" width="250"/>
@@ -70,13 +70,13 @@ Once inside, you can configure the Wifi, Cloudflare credentials and check the st
 
 In the Wifi Credentials tab, the ESP32 automatically scans for available SSIDs, if you want to connect to a hidden SSID, choose `other`. You can also configure your preferred Hostname.
 
-For the Cloudflare DNS tab you will need an API Token, with `edit:zone` permissions, the Zone ID of the Record you want to modify, and the DNS record, like `record.example.com`. Note that it has to be an A record.
+For the Cloudflare DNS tab you will need an API token with `Zone:DNS:Edit` permissions, the Zone ID, and the DNS record name (e.g. `home.example.com`). Both A and CNAME records are supported, but only an A Record can be filled with an IP Adress.
 
 In the status tab, you can check the current IP address, if the API Key is valid, what IP is in the Zone and the Last DNS Update. You can force a refresh clicking the Refresh button.
 
 ## Leds
 
-The project is configured so that if a led present in `PIN 2` shows the current status of the board. The following table lists the possible led states.
+A LED on GPIO 2 shows the current status of the board. The following table lists the possible states.
 
 | State | LED behaviour | Trigger |
 |---|---|---|
@@ -87,11 +87,11 @@ The project is configured so that if a led present in `PIN 2` shows the current 
 | `dns_update` | 3 blinks | Cloudflare A/CNAME record successfully updated with new IP |
 | `off` | Off | Idle — after `connected` timer expires, or initial state |
 
-Note that if the device fails to connect to the Wifi, it will fallback to AP Mode so that is reconfigured. If the wifi is available again, a simple reset should be enough to revert back to Wifi Client Mode.
+If the device fails to connect to Wi-Fi, it falls back to AP mode so it can be reconfigured. Once Wi-Fi is available again, a reset is enough to revert to client mode.
 
 ## Manually Uploading config.json
 
-If you want to skip the Graphical Interface configuration, it is possible to upload a `config.json` file manually to the root:
+To skip the web interface, upload a `config.json` file directly to the device root:
 
 ```json
 {
@@ -118,4 +118,4 @@ mpremote fs cp config.json :/
 
 ## Troubleshooting
 
-If you encounter any problems during the configuration, you can connect via serial port, to get debug data and diagnose your problem.
+If you encounter any problems, connect via serial port to get debug output and diagnose the issue.
