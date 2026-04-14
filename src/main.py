@@ -10,12 +10,13 @@ def main():
     print('--- boot ---')
     t0 = time.ticks_ms()
 
-    print('[1/5] Initialising status LED...')
-    led = StatusLed()
-
-    print('[2/5] Loading config...')
+    print('[1/5] Loading config...')
     config = ConfigManager()
     print(f'  saved SSID: {config.get_wifi_ssid() or "(none)"}')
+
+    print('[2/5] Initialising status LED...')
+    led_pin = config.get_led_pin()
+    led = StatusLed(led_pin) if led_pin is not None else StatusLed()
 
     print('[3/5] Setting up Wi-Fi...')
     wifi = WiFiManager()

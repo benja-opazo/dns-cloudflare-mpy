@@ -4,7 +4,7 @@ import time
 CHECK_INTERVAL_MS = 60 * 1000  # 1 minute
 
 CF_BASE        = 'https://api.cloudflare.com/client/v4/zones/'
-CF_RECORDS_EXT = '/dns_records?type=A&name='
+CF_RECORDS_EXT = '/dns_records?name='
 
 
 class DnsUpdater:
@@ -14,7 +14,8 @@ class DnsUpdater:
         self._led = status_led
         self._last_ip = None
         self._last_check = None       # ticks_ms() of last check attempt
-        self._zone_ip = None          # IP currently in the Cloudflare A record
+        self._zone_ip = None          # content currently in the Cloudflare record
+        self._record_type = None      # 'A' or 'CNAME', detected from the API
         self._cf_status = None        # None=unknown, 'valid', 'invalid', 'unconfigured'
         self._last_dns_update = None  # formatted timestamp of last successful update
 
@@ -91,8 +92,8 @@ class DnsUpdater:
     # ------------------------------------------------------------------ #
 
     def _fetch_cf_status(self):
-        """Query Cloudflare for the current A record value and validate the API key.
-        Sets _cf_status ('valid'/'invalid'/'unconfigured') and _zone_ip."""
+        """Query Cloudflare for the current record value and validate the API key.
+        Sets _cf_status ('valid'/'invalid'/'unconfigured'), _zone_ip, and _record_type."""
         api_key = self.config.get_cf_api_key()
         zone_id = self.config.get_cf_zone_id()
         record_name = self.config.get_cf_record_name()
@@ -112,6 +113,7 @@ class DnsUpdater:
                 results = data.get('result', [])
                 if results:
                     self._zone_ip = results[0]['content']
+                    self._record_type = results[0]['type']
             else:
                 self._cf_status = 'invalid'
         except Exception as e:
@@ -121,6 +123,7 @@ class DnsUpdater:
         """Return a dict with all status fields for the /cf-status endpoint."""
         return {
             'zone_ip':         self._zone_ip         or 'unknown',
+            'record_type':     self._record_type      or 'unknown',
             'cf_status':       self._cf_status        or 'unknown',
             'last_dns_update': self._last_dns_update  or 'never',
         }
@@ -130,7 +133,7 @@ class DnsUpdater:
     # ------------------------------------------------------------------ #
 
     def update_dns(self, ip):
-        """Update the configured Cloudflare A record with the new public IP."""
+        """Update the configured Cloudflare record (A or CNAME) with the new public IP."""
         api_key = self.config.get_cf_api_key()
         zone_id = self.config.get_cf_zone_id()
         record_name = self.config.get_cf_record_name()
@@ -142,7 +145,7 @@ class DnsUpdater:
         headers = self._cf_headers(api_key)
         import urequests
 
-        # Step 1 — find the record ID
+        # Step 1 — find the record ID and type
         try:
             r = urequests.get(CF_BASE + zone_id + CF_RECORDS_EXT + record_name,
                               headers=headers)
@@ -153,9 +156,12 @@ class DnsUpdater:
                 self._cf_status = 'invalid'
                 return
             if not data.get('result'):
-                print('update_dns: A record not found for', record_name)
+                print('update_dns: record not found for', record_name)
                 return
-            record_id = data['result'][0]['id']
+            record = data['result'][0]
+            record_id   = record['id']
+            record_type = record['type']  # 'A' or 'CNAME'
+            self._record_type = record_type
         except Exception as e:
             print('update_dns: error fetching record id:', e)
             return
@@ -163,7 +169,7 @@ class DnsUpdater:
         # Step 2 — update the record content
         try:
             url = CF_BASE + zone_id + '/dns_records/' + record_id
-            body = json.dumps({'type': 'A', 'name': record_name, 'content': ip, 'ttl': 1})
+            body = json.dumps({'type': record_type, 'name': record_name, 'content': ip, 'ttl': 1})
             r = urequests.put(url, data=body, headers=headers)
             result = r.json()
             r.close()
