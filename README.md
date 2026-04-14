@@ -59,9 +59,9 @@ Once connected, go to `192.168.4.1` and the Project Main Page should load. If it
 Once inside, you can configure the Wifi, Cloudflare credentials and check the status of the program.
 
 <p float="left">
-  <img src="./imgs/wifi_credentials.jpg" width="100" />
-  <img src="./imgs/dns_credentials.jpg" width="100" /> 
-  <img src="./imgs/status.jpg" width="100" />
+  <img src="./imgs/wifi_credentials.jpg" width="200"/>
+  <img src="./imgs/dns_credentials.jpg" width="200"/> 
+  <img src="./imgs/status.jpg" width="200"/>
 </p>
 
 
