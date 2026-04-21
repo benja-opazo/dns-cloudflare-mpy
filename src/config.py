@@ -54,8 +54,9 @@ class ConfigManager:
         self._cfg.setdefault('wifi', {})['hostname'] = hostname
         return self.save()
 
-    def get_led_pin(self) -> int | None:
-        return self._cfg.get('led_pin', None)
+    def get_led_pin(self) -> 'int | None':
+        v = self._cfg.get('led_pin')
+        return int(v) if v is not None else None  # type: ignore[arg-type]
 
     def get_cf_api_key(self):
         return self._cfg.get('cloudflare', {}).get('api_key', '')
