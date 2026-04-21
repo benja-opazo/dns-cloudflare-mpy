@@ -96,19 +96,44 @@ class Server:
         print('Socket restarted')
 
     def run_forever(self):
+        import gc
+
         assert self._sock is not None, 'call start() before run_forever()'
+
+        # Hardware watchdog: if the poll loop stalls for >15 s (e.g. TCP stack
+        # deadlock under rapid load), the ESP32 resets automatically.
+        try:
+            wdt = machine.WDT(timeout=15000)
+            print('WDT armed (15 s)')
+        except Exception:
+            wdt = None  # some MicroPython builds omit WDT
+            print('WDT not available — continuing without watchdog')
+
         poller = select.poll()
         poller.register(self._sock, select.POLLIN)
         print('run_forever() — entering poll loop')
 
+        gc_counter = 0
+        error_streak = 0
+        MAX_ERRORS = 5  # consecutive poll errors before giving up and resetting
+
         while True:
             try:
+                if wdt:
+                    wdt.feed()
                 if self._led:
                     self._led.tick()
                 if self.dns_updater:
                     self.dns_updater.tick()
+
+                # Force GC every ~1 s to reclaim RAM from rapid connections.
+                gc_counter += 1
+                if gc_counter >= 50:
+                    gc.collect()
+                    gc_counter = 0
+
                 events = poller.poll(20)  # 20 ms — keeps LED tick responsive
-                for fd, event in events:
+                for fd, _ in events:
                     conn, addr = fd.accept()
                     print('HTTP from', addr)
                     reboot = False
@@ -124,6 +149,7 @@ class Server:
                     if reboot:
                         time.sleep(2)
                         machine.reset()
+                error_streak = 0  # successful poll iteration
             except OSError as e:
                 if e.args[0] == 128:  # ENOTCONN — wifi dropped, sockets are invalid
                     print('Network lost — attempting reconnect...')
@@ -136,11 +162,22 @@ class Server:
                             print('Reconnect failed — falling back to AP mode')
                             self.wifi.start_ap_mode()
                     self._restart_sockets(poller)
+                    error_streak = 0
                 else:
-                    print('Poll error [' + type(e).__name__ + ']:', e)
-                    time.sleep(1)
+                    error_streak += 1
+                    print('Poll error [{}/{}] [{}]: {}'.format(
+                        error_streak, MAX_ERRORS, type(e).__name__, e))
+                    if error_streak >= MAX_ERRORS:
+                        print('Too many consecutive errors — resetting now')
+                        machine.reset()
+                    self._restart_sockets(poller)
             except Exception as e:
-                print('Poll error [' + type(e).__name__ + ']:', e)
+                error_streak += 1
+                print('Poll error [{}/{}] [{}]: {}'.format(
+                    error_streak, MAX_ERRORS, type(e).__name__, e))
+                if error_streak >= MAX_ERRORS:
+                    print('Too many consecutive errors — resetting now')
+                    machine.reset()
                 time.sleep(1)
 
     # ------------------------------------------------------------------ #

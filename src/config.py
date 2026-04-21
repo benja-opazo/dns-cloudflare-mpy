@@ -54,7 +54,7 @@ class ConfigManager:
         self._cfg.setdefault('wifi', {})['hostname'] = hostname
         return self.save()
 
-    def get_led_pin(self):
+    def get_led_pin(self) -> int | None:
         return self._cfg.get('led_pin', None)
 
     def get_cf_api_key(self):
