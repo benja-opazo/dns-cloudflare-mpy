@@ -52,7 +52,7 @@ Create a `.vscode` folder with a `settings.json` file:
 
 ## Installation on ESP32
 
-Using `mpremote`, copy the files inside the src folder. The following code should work.
+After installing the firmware, use `mpremote` to copy the files inside the src folder. The following code should work.
 
 ```bash
 cd src
