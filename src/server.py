@@ -3,10 +3,14 @@ import select
 import socket
 import machine
 import time
+from log import log
+from timesync import sync_time
 
 DATA_DIR = 'data'
 MAX_HEADER_SIZE = 4096
 CHUNK_SIZE = 1024
+NTP_INTERVAL_MS = 6 * 60 * 60 * 1000  # 6 hours once synced
+NTP_RETRY_MS    = 5 * 60 * 1000       # 5 min while clock is unsynced
 
 
 def _url_decode(s):
@@ -54,31 +58,33 @@ class Server:
         self.dns_updater = dns_updater
         self._led = led
         self._sock = None       # port 80  – HTTP
+        self._ntp_synced = time.localtime()[0] > 2000
+        self._last_ntp_sync = time.ticks_ms()
 
     def _make_socket(self, port):
-        print(f'  Binding port {port}...')
+        log(f'  Binding port {port}...')
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind(('0.0.0.0', port))
             s.listen(5)
-            print(f'  Port {port} ready')
+            log(f'  Port {port} ready')
             return s
         except Exception as e:
-            print(f'  Port {port} bind failed [{type(e).__name__}]: {e}')
+            log(f'  Port {port} bind failed [{type(e).__name__}]: {e}')
             raise
 
     def start(self):
-        print('Server.start() — closing any existing sockets')
+        log('Server.start() — closing any existing sockets')
         if self._sock:
             try:
                 self._sock.close()
-                print('  Closed old _sock')
+                log('  Closed old _sock')
             except Exception as e:
-                print(f'  Could not close _sock: {e}')
-        print('Creating sockets...')
+                log(f'  Could not close _sock: {e}')
+        log('Creating sockets...')
         self._sock = self._make_socket(80)
-        print('Listening — HTTP :80  (' + self.wifi.get_mode() + '  ' + self.wifi.get_ip() + ')')
+        log('Listening — HTTP :80  (' + self.wifi.get_mode() + '  ' + self.wifi.get_ip() + ')')
 
     def _restart_sockets(self, poller):
         """Close and recreate the listening socket, updating the poller."""
@@ -93,7 +99,7 @@ class Server:
                 pass
         self._sock = self._make_socket(80)
         poller.register(self._sock, select.POLLIN)
-        print('Socket restarted')
+        log('Socket restarted')
 
     def run_forever(self):
         import gc
@@ -104,14 +110,19 @@ class Server:
         # deadlock under rapid load), the ESP32 resets automatically.
         try:
             wdt = machine.WDT(timeout=15000)
-            print('WDT armed (15 s)')
+            log('WDT armed (15 s)')
         except Exception:
             wdt = None  # some MicroPython builds omit WDT
-            print('WDT not available — continuing without watchdog')
+            log('WDT not available — continuing without watchdog')
+
+        # Let the DNS updater feed the watchdog during its blocking HTTP/HTTPS
+        # calls, so a slow refresh can't stall the loop past the WDT timeout.
+        if self.dns_updater:
+            self.dns_updater.set_wdt(wdt)
 
         poller = select.poll()
         poller.register(self._sock, select.POLLIN)
-        print('run_forever() — entering poll loop')
+        log('run_forever() — entering poll loop')
 
         gc_counter = 0
         error_streak = 0
@@ -126,6 +137,18 @@ class Server:
                 if self.dns_updater:
                     self.dns_updater.tick()
 
+                now = time.ticks_ms()
+                ntp_interval = NTP_INTERVAL_MS if self._ntp_synced else NTP_RETRY_MS
+                if time.ticks_diff(now, self._last_ntp_sync) >= ntp_interval:
+                    # Only consume the timer when we actually attempt, so a reconnect
+                    # after an AP-mode gap retries promptly instead of waiting again.
+                    if self.wifi.get_mode() == 'client' and self.wifi.is_connected():
+                        self._last_ntp_sync = now
+                        if wdt:
+                            wdt.feed()  # sync_time() blocks on NTP; keep the WDT fed
+                        if sync_time(self.wifi):
+                            self._ntp_synced = True
+
                 # Force GC every ~1 s to reclaim RAM from rapid connections.
                 gc_counter += 1
                 if gc_counter >= 50:
@@ -135,15 +158,15 @@ class Server:
                 events = poller.poll(20)  # 20 ms — keeps LED tick responsive
                 for fd, _ in events:
                     conn, addr = fd.accept()
-                    print('HTTP from', addr)
+                    log('HTTP from', addr)
                     reboot = False
                     try:
                         reboot = self._handle(conn)
                     except OSError as e:
                         if e.args[0] != 113:  # suppress ECONNABORTED (client hung up)
-                            print('Handler error [' + type(e).__name__ + ']:', e)
+                            log('Handler error [' + type(e).__name__ + ']:', e)
                     except Exception as e:
-                        print('Handler error [' + type(e).__name__ + ']:', e)
+                        log('Handler error [' + type(e).__name__ + ']:', e)
                     finally:
                         conn.close()
                     if reboot:
@@ -152,31 +175,31 @@ class Server:
                 error_streak = 0  # successful poll iteration
             except OSError as e:
                 if e.args[0] == 128:  # ENOTCONN — wifi dropped, sockets are invalid
-                    print('Network lost — attempting reconnect...')
+                    log('Network lost — attempting reconnect...')
                     time.sleep(5)
                     if self.wifi.get_mode() == 'client':
                         ip = self.wifi.connect_sta(
                             self.config.get_wifi_ssid(),
                             self.config.get_wifi_password())
                         if not ip:
-                            print('Reconnect failed — falling back to AP mode')
+                            log('Reconnect failed — falling back to AP mode')
                             self.wifi.start_ap_mode()
                     self._restart_sockets(poller)
                     error_streak = 0
                 else:
                     error_streak += 1
-                    print('Poll error [{}/{}] [{}]: {}'.format(
+                    log('Poll error [{}/{}] [{}]: {}'.format(
                         error_streak, MAX_ERRORS, type(e).__name__, e))
                     if error_streak >= MAX_ERRORS:
-                        print('Too many consecutive errors — resetting now')
+                        log('Too many consecutive errors — resetting now')
                         machine.reset()
                     self._restart_sockets(poller)
             except Exception as e:
                 error_streak += 1
-                print('Poll error [{}/{}] [{}]: {}'.format(
+                log('Poll error [{}/{}] [{}]: {}'.format(
                     error_streak, MAX_ERRORS, type(e).__name__, e))
                 if error_streak >= MAX_ERRORS:
-                    print('Too many consecutive errors — resetting now')
+                    log('Too many consecutive errors — resetting now')
                     machine.reset()
                 time.sleep(1)
 
@@ -198,11 +221,11 @@ class Server:
                 if b'\r\n\r\n' in raw:
                     break
         except Exception as e:
-            print('  recv error:', type(e).__name__, e)
+            log('  recv error:', type(e).__name__, e)
 
         sep = raw.find(b'\r\n\r\n')
         if sep == -1:
-            print('  recv: no header terminator ({} bytes, {} ms)'.format(
+            log('  recv: no header terminator ({} bytes, {} ms)'.format(
                 len(raw), time.ticks_diff(time.ticks_ms(), t0)))
             return 'GET', '/', ''
 
@@ -218,6 +241,8 @@ class Server:
         cl_idx = header_lower.find(b'content-length:')
         if cl_idx != -1:
             cl_end = header_lower.find(b'\r\n', cl_idx)
+            if cl_end == -1:  # Content-Length is the last header — no trailing CRLF in raw[:sep]
+                cl_end = len(header_lower)
             try:
                 content_length = int(header_lower[cl_idx + 15:cl_end].strip())
             except Exception:
@@ -233,7 +258,7 @@ class Server:
         except Exception:
             pass
 
-        print('  recv: {} {} ({} ms)'.format(
+        log('  recv: {} {} ({} ms)'.format(
             method, path, time.ticks_diff(time.ticks_ms(), t0)))
         return method, path, bytes(body[:content_length]).decode('utf-8', 'ignore')
 
@@ -257,7 +282,7 @@ class Server:
         while sent < len(body):
             conn.sendall(mv[sent:sent + CHUNK_SIZE])
             sent += CHUNK_SIZE
-        print(f'  send_response: {status}  {content_type}  {len(body)} bytes  {time.ticks_diff(time.ticks_ms(), t0)} ms')
+        log(f'  send_response: {status}  {content_type}  {len(body)} bytes  {time.ticks_diff(time.ticks_ms(), t0)} ms')
 
     def _redirect(self, conn, location='/'):
         conn.sendall((
@@ -266,14 +291,14 @@ class Server:
             f'Connection: close\r\n'
             f'\r\n'
         ).encode())
-        print(f'  redirect -> {location}')
+        log(f'  redirect -> {location}')
 
     def _serve_static(self, conn, path, content_type):
         """Serve a file in chunks (memory-efficient for large files)."""
         try:
             import os
             size = os.stat(path)[6]
-            print(f'  serve_static: {path}  {size} bytes')
+            log(f'  serve_static: {path}  {size} bytes')
             conn.sendall((
                 f'HTTP/1.1 200 OK\r\n'
                 f'Content-Type: {content_type}\r\n'
@@ -290,24 +315,27 @@ class Server:
                         break
                     conn.sendall(chunk)
                     sent += len(chunk)
-            print(f'  serve_static: sent {sent}/{size} bytes  {time.ticks_diff(time.ticks_ms(), t0)} ms')
+            log(f'  serve_static: sent {sent}/{size} bytes  {time.ticks_diff(time.ticks_ms(), t0)} ms')
         except Exception as err:
-            print(f'  serve_static error: {err}')
+            log(f'  serve_static error: {err}')
             self._send_response(conn, '404 Not Found', 'text/plain', f'Not found: {path} ({err})')
 
     def _serve_template(self, conn, path, content_type, variables):
         """Read template, substitute variables, send with Content-Length."""
+        import gc
         try:
             t0 = time.ticks_ms()
             with open(path, 'r') as f:
                 content = f.read()
             for key, value in variables.items():
                 content = content.replace('{{' + key + '}}', value)
-            print('  serve_template: {} bytes in {} ms'.format(
+            log('  serve_template: {} bytes in {} ms'.format(
                 len(content), time.ticks_diff(time.ticks_ms(), t0)))
             self._send_response(conn, '200 OK', content_type, content)
+            del content
+            gc.collect()
         except Exception as err:
-            print('  serve_template error:', err)
+            log('  serve_template error:', err)
             try:
                 self._send_response(conn, '500 Internal Server Error', 'text/plain', str(err))
             except Exception:
@@ -334,7 +362,7 @@ class Server:
         """Dispatch the request and return True if a reboot is required."""
         t_handle = time.ticks_ms()
         method, path, body = self._recv_request(conn)
-        print(f'{method} {path}  (recv took {time.ticks_diff(time.ticks_ms(), t_handle)} ms)')
+        log(f'{method} {path}  (recv took {time.ticks_diff(time.ticks_ms(), t_handle)} ms)')
 
         # Public IP — cached value
         if path == '/public-ip':
@@ -422,7 +450,7 @@ class Server:
             self._send_response(conn, '200 OK', 'text/html', _reboot_page('Cloudflare config saved'))
             return True
 
-        print(f'404 {method} {path}')
+        log(f'404 {method} {path}')
         self._send_response(conn, '404 Not Found', 'text/plain', 'Not Found')
         return False
 

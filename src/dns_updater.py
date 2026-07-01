@@ -1,7 +1,10 @@
+import gc
 import json
 import time
+from log import log
 
 CHECK_INTERVAL_MS = 60 * 1000  # 1 minute
+HTTP_TIMEOUT = 10  # seconds — bound each request so a hung call can't stall the loop
 
 CF_BASE        = 'https://api.cloudflare.com/client/v4/zones/'
 CF_RECORDS_EXT = '/dns_records?name='
@@ -18,10 +21,21 @@ class DnsUpdater:
         self._record_type = None      # 'A' or 'CNAME', detected from the API
         self._cf_status = None        # None=unknown, 'valid', 'invalid', 'unconfigured'
         self._last_dns_update = None  # formatted timestamp of last successful update
+        self._wdt = None              # optional hardware watchdog to feed during I/O
 
     # ------------------------------------------------------------------ #
     #  Helpers                                                             #
     # ------------------------------------------------------------------ #
+
+    def set_wdt(self, wdt):
+        """Register the hardware watchdog so long network calls can feed it."""
+        self._wdt = wdt
+
+    def _feed(self):
+        """Feed the watchdog (if any) before a blocking network call, so a slow
+        request doesn't trip the WDT and reset the board mid-refresh."""
+        if self._wdt:
+            self._wdt.feed()
 
     @staticmethod
     def _format_time():
@@ -48,18 +62,23 @@ class DnsUpdater:
             return None
         try:
             import urequests
-            r = urequests.get('http://api.ipify.org')
-            ip = r.text.strip()
-            r.close()
+            gc.collect()
+            self._feed()
+            r = urequests.get('http://api.ipify.org', timeout=HTTP_TIMEOUT)
+            try:
+                ip = r.text.strip()
+            finally:
+                r.close()
             return ip
         except Exception as e:
-            print('get_public_ip error:', e)
+            log('get_public_ip error:', e)
+            gc.collect()
             return None
 
     def _apply_ip(self, ip):
         """Compare ip against the last known value and call update_dns if it changed."""
         if ip != self._last_ip:
-            print('Public IP changed:', self._last_ip, '->', ip)
+            log('Public IP changed:', self._last_ip, '->', ip)
             self._last_ip = ip
             self.update_dns(ip)
         else:
@@ -104,10 +123,14 @@ class DnsUpdater:
 
         import urequests
         try:
+            gc.collect()
+            self._feed()
             r = urequests.get(CF_BASE + zone_id + CF_RECORDS_EXT + record_name,
-                              headers=self._cf_headers(api_key))
-            data = r.json()
-            r.close()
+                              headers=self._cf_headers(api_key), timeout=HTTP_TIMEOUT)
+            try:
+                data = r.json()
+            finally:
+                r.close()
             if data.get('success'):
                 self._cf_status = 'valid'
                 results = data.get('result', [])
@@ -117,7 +140,8 @@ class DnsUpdater:
             else:
                 self._cf_status = 'invalid'
         except Exception as e:
-            print('_fetch_cf_status error:', e)
+            log('_fetch_cf_status error [{}]: {}'.format(type(e).__name__, e))
+            gc.collect()
 
     def status(self):
         """Return a dict with all status fields for the /cf-status endpoint."""
@@ -139,7 +163,7 @@ class DnsUpdater:
         record_name = self.config.get_cf_record_name()
 
         if not api_key or not zone_id or not record_name:
-            print('update_dns: Cloudflare config incomplete, skipping')
+            log('update_dns: Cloudflare config incomplete, skipping')
             return
 
         headers = self._cf_headers(api_key)
@@ -147,34 +171,43 @@ class DnsUpdater:
 
         # Step 1 — find the record ID and type
         try:
+            gc.collect()
+            self._feed()
             r = urequests.get(CF_BASE + zone_id + CF_RECORDS_EXT + record_name,
-                              headers=headers)
-            data = r.json()
-            r.close()
+                              headers=headers, timeout=HTTP_TIMEOUT)
+            try:
+                data = r.json()
+            finally:
+                r.close()
             if not data.get('success'):
-                print('update_dns: API error fetching record:', data.get('errors'))
+                log('update_dns: API error fetching record:', data.get('errors'))
                 self._cf_status = 'invalid'
                 return
             if not data.get('result'):
-                print('update_dns: record not found for', record_name)
+                log('update_dns: record not found for', record_name)
                 return
             record = data['result'][0]
             record_id   = record['id']
             record_type = record['type']  # 'A' or 'CNAME'
             self._record_type = record_type
         except Exception as e:
-            print('update_dns: error fetching record id:', e)
+            log('update_dns: error fetching record id [{}]: {}'.format(type(e).__name__, e))
+            gc.collect()
             return
 
         # Step 2 — update the record content
         try:
             url = CF_BASE + zone_id + '/dns_records/' + record_id
             body = json.dumps({'type': record_type, 'name': record_name, 'content': ip, 'ttl': 1})
-            r = urequests.put(url, data=body, headers=headers)
-            result = r.json()
-            r.close()
+            gc.collect()
+            self._feed()
+            r = urequests.put(url, data=body, headers=headers, timeout=HTTP_TIMEOUT)
+            try:
+                result = r.json()
+            finally:
+                r.close()
             if result.get('success'):
-                print('update_dns: updated', record_name, '->', ip)
+                log('update_dns: updated', record_name, '->', ip)
                 self._zone_ip = ip
                 self._cf_status = 'valid'
                 ts = self._format_time()
@@ -183,10 +216,10 @@ class DnsUpdater:
                 if self._led:
                     self._led.set_dns_update()
             else:
-                print('update_dns: API error:', result.get('errors'))
+                log('update_dns: API error:', result.get('errors'))
                 self._cf_status = 'invalid'
         except Exception as e:
-            print('update_dns: error updating record:', e)
+            log('update_dns: error updating record:', e)
 
     # ------------------------------------------------------------------ #
     #  Periodic tick                                                       #

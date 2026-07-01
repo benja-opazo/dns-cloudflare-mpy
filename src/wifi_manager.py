@@ -1,5 +1,6 @@
 import network
 import time
+from log import log
 
 AP_SSID = 'ESP32-DNSConfig'
 AP_PASSWORD = 'configure'
@@ -8,50 +9,66 @@ CONNECT_TIMEOUT = 20  # seconds
 
 class WiFiManager:
     def __init__(self):
-        self.sta = network.WLAN(network.WLAN.IF_STA)
-        self.ap = network.WLAN(network.WLAN.IF_AP)
+        self.sta = network.WLAN(network.STA_IF)
+        self.ap = network.WLAN(network.AP_IF)
         self._mode = None
 
     def start_ap_mode(self):
-        print('Starting AP mode...')
+        log('Starting AP mode...')
         self.sta.active(False)
         self.ap.active(True)
         self.ap.config(essid=AP_SSID, password=AP_PASSWORD)
         time.sleep(1)
         cfg = self.ap.ifconfig()
         self._mode = 'ap'
-        print(f'AP active — SSID: {AP_SSID}  IP: {cfg[0]}  subnet: {cfg[1]}  gw: {cfg[2]}')
+        log(f'AP active — SSID: {AP_SSID}  IP: {cfg[0]}  subnet: {cfg[1]}  gw: {cfg[2]}')
         return cfg[0]
 
     def connect_sta(self, ssid, password, hostname=None):
-        print(f'Connecting to "{ssid}"...')
+        log(f'Connecting to "{ssid}"...')
         self.ap.active(False)
         self.sta.active(True)
+        # Disable WiFi power-save — the radio sleeps between beacons and drops
+        # incoming packets, causing UDP/NTP timeouts and intermittent DNS/HTTPS.
+        try:
+            self.sta.config(pm=network.WLAN.PM_NONE)
+            log('  WiFi power-save disabled (PM_NONE)')
+        except Exception as e:
+            try:
+                self.sta.config(pm=0)
+                log('  WiFi power-save disabled (pm=0)')
+            except Exception as e2:
+                log(f'  Could not disable WiFi PM: {e2}')
         if hostname:
             try:
                 self.sta.config(dhcp_hostname=hostname)
-                print(f'  Hostname: {hostname}')
+                log(f'  Hostname: {hostname}')
             except Exception as e:
-                print(f'  Hostname set failed: {e}')
+                log(f'  Hostname set failed: {e}')
         if self.sta.isconnected():
-            print('STA already connected — disconnecting first')
+            log('STA already connected — disconnecting first')
             self.sta.disconnect()
             time.sleep(1)
         self.sta.connect(ssid, password)
         for i in range(CONNECT_TIMEOUT):
             status = self.sta.status()
-            print(f'  [{i+1}/{CONNECT_TIMEOUT}] status={status}')
+            log(f'  [{i+1}/{CONNECT_TIMEOUT}] status={status}')
             if self.sta.isconnected():
                 cfg = self.sta.ifconfig()
                 self._mode = 'client'
-                print(f'Connected — IP: {cfg[0]}  subnet: {cfg[1]}  gw: {cfg[2]}  dns: {cfg[3]}')
+                log(f'Connected — IP: {cfg[0]}  subnet: {cfg[1]}  gw: {cfg[2]}  dns: {cfg[3]}')
                 return cfg[0]
             time.sleep(1)
-        print(f'Connection failed after {CONNECT_TIMEOUT}s — final status={self.sta.status()}')
+        log(f'Connection failed after {CONNECT_TIMEOUT}s — final status={self.sta.status()}')
         return None
 
     def is_connected(self):
         return self.sta.isconnected()
+
+    def get_gateway(self):
+        if self._mode == 'client' and self.sta.isconnected():
+            return self.sta.ifconfig()[2]
+        return None
 
     def get_ip(self):
         if self._mode == 'client' and self.sta.isconnected():
@@ -92,7 +109,7 @@ class WiFiManager:
             networks.sort(key=lambda x: -x[1])  # RSSI is negative; less negative = stronger
             return networks
         except Exception as e:
-            print('Scan error:', e)
+            log('Scan error:', e)
             return []
         finally:
             if not was_active:

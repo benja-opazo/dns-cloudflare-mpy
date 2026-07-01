@@ -1,4 +1,5 @@
 import json
+from log import log
 
 CONFIG_PATH = '/config.json'
 
@@ -24,7 +25,7 @@ class ConfigManager:
                 json.dump(self._cfg, f)
             return True
         except Exception as e:
-            print('Config save error:', e)
+            log('Config save error:', e)
             return False
 
     def set_wifi(self, ssid, password):
