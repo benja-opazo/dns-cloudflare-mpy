@@ -12,6 +12,8 @@
 - `uv`
 - A Microcontroller with [Micropython](https://micropython.org/) installed
 
+To install Micropython on your board, follow the [official instructions](https://micropython.org/download/ESP32_GENERIC/). For better compatibility use the `ESP32_GENERIC` build with the **V1.24.1** firmware. For more information, check the note below and the [Troubleshooting](#troubleshooting) section.
+
 > [!IMPORTANT]
 > **Firmware version matters:** On ESP32 boards **without PSRAM** (e.g. WROOM-32),
 > MicroPython **v1.25+** (ESP-IDF 5.4/5.5) breaks all HTTPS/TLS, so Cloudflare updates
@@ -52,12 +54,14 @@ Create a `.vscode` folder with a `settings.json` file:
 
 ## Installation on ESP32
 
-Using mpremote, copy the files inside the src folder. The following code should work.
+Using `mpremote`, copy the files inside the src folder. The following code should work.
 
 ```bash
 cd src
 mpremote fs cp -r . :/
 ```
+
+Note that you need to have the virtual environment activated before running `mpremote` (with `uv sync`).
 
 ## Usage
 
@@ -75,7 +79,7 @@ Once inside, you can configure the Wi-Fi and Cloudflare credentials, and check t
 
 In the Wifi Credentials tab, the ESP32 automatically scans for available SSIDs, if you want to connect to a hidden SSID, choose `other`. You can also configure your preferred Hostname.
 
-For the Cloudflare DNS tab you will need an API token with `Zone:DNS:Edit` permissions, the Zone ID, and the DNS record name (e.g. `home.example.com`). Both A and CNAME records are supported, but only an A Record can be filled with an IP Adress.
+For the Cloudflare DNS tab you will need an API token with `Zone:DNS:Edit` permissions, the Zone ID, and the DNS record name (e.g. `home.example.com`). The DNS Record Type should be 'A' so that the ESP32 can update the DNS record with the current IP address.
 
 In the status tab, you can check the current IP address, if the API Key is valid, what IP is in the Zone and the Last DNS Update. You can force a refresh clicking the Refresh button.
 
@@ -123,9 +127,9 @@ mpremote fs cp config.json :/
 
 ## Troubleshooting
 
-If you encounter any problems, connect via serial port to get debug output and diagnose the issue. You can use [tio](https://github.com/tio/tio) on linux or MacOS, or [putty](https://putty.org/index.html) on Windows.
+If you encounter any problems, connect via Serial Port to get debug output and diagnose the issue. You can use [tio](https://github.com/tio/tio) on Linux or MacOS, or [putty](https://putty.org/index.html) on Windows.
 
-You can also modify the `main.py` by commenting `main()` and adding `import diag`:
+You can also modify the `main.py` by commenting `main()` and adding `import diag`. This will allow you to run the connectivity test suite (DNS, HTTP, NTP, HTTPS/TLS) and diagnose any issues by checking the debug output via serial port.
 
 ```python
 #...
