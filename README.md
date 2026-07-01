@@ -25,13 +25,11 @@ To install Micropython on your board, follow the [official instructions](https:/
 
 ### Project Dependencies
 
-To initialize the project
+To initialize the project and activate the virtual environment
 
 `uv sync`
 
-then activate with:
-
-`source .venv/bin/activate`
+## Development Environment
 
 ### MicroPython Stubs (Optional)
 
