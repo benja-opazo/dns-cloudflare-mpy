@@ -69,6 +69,7 @@ class DnsUpdater:
                 ip = r.text.strip()
             finally:
                 r.close()
+            log('Public IP check:', ip)
             return ip
         except Exception as e:
             log('get_public_ip error:', e)
@@ -82,6 +83,7 @@ class DnsUpdater:
             self._last_ip = ip
             self.update_dns(ip)
         else:
+            log('Public IP unchanged:', ip)
             self._last_ip = ip
 
     def force_check(self):
@@ -94,8 +96,15 @@ class DnsUpdater:
         # we are in AP mode and will return None without making any request.
         if self._led and self.wifi.get_mode() == 'client' and self.wifi.is_connected():
             self._led.set_ip_check()
+        if self.wifi.get_mode() != 'client':
+            log('IP check skipped — not in client mode (mode={})'.format(self.wifi.get_mode()))
+            return None
+        if not self.wifi.is_connected():
+            log('IP check skipped — Wi-Fi not connected')
+            return None
         ip = self.get_public_ip()
         if ip is None:
+            log('IP check failed — could not fetch public IP')
             return None
         if self._cf_status is None:
             self._fetch_cf_status()
@@ -119,6 +128,7 @@ class DnsUpdater:
 
         if not api_key or not zone_id or not record_name:
             self._cf_status = 'unconfigured'
+            log('Cloudflare status: unconfigured (missing api_key/zone_id/record_name)')
             return
 
         import urequests
@@ -137,8 +147,13 @@ class DnsUpdater:
                 if results:
                     self._zone_ip = results[0]['content']
                     self._record_type = results[0]['type']
+                    log('Cloudflare status: valid — {} record {} = {}'.format(
+                        self._record_type, record_name, self._zone_ip))
+                else:
+                    log('Cloudflare status: valid — no record found for', record_name)
             else:
                 self._cf_status = 'invalid'
+                log('Cloudflare status: invalid —', data.get('errors'))
         except Exception as e:
             log('_fetch_cf_status error [{}]: {}'.format(type(e).__name__, e))
             gc.collect()
@@ -165,6 +180,9 @@ class DnsUpdater:
         if not api_key or not zone_id or not record_name:
             log('update_dns: Cloudflare config incomplete, skipping')
             return
+
+        if ip == self._zone_ip:
+            log('update_dns: zone already at', ip, '— updating anyway')
 
         headers = self._cf_headers(api_key)
         import urequests

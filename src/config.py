@@ -13,7 +13,10 @@ class ConfigManager:
         try:
             with open(CONFIG_PATH, 'r') as f:
                 self._cfg = json.load(f)
-        except Exception:
+            log('Config loaded from', CONFIG_PATH)
+        except Exception as e:
+            log('Config load failed ({}: {}) — using empty defaults'.format(
+                type(e).__name__, e))
             self._cfg = {
                 'wifi': {'ssid': '', 'password': '', 'hostname': 'esp32-dns'},
                 'cloudflare': {'api_key': '', 'zone_id': '', 'record_name': ''}

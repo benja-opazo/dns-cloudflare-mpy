@@ -1,3 +1,4 @@
+import machine
 import time
 
 from config import ConfigManager
@@ -8,9 +9,24 @@ from server import Server
 from timesync import sync_time
 from wifi_manager import WiFiManager
 
+# machine.reset_cause() codes -> human-readable reason, so an unexpected reboot
+# on the serial log tells you whether it was a watchdog trip, panic, or power-on.
+_RESET_CAUSES = {
+    getattr(machine, 'PWRON_RESET', -1):     'power-on',
+    getattr(machine, 'HARD_RESET', -2):      'hard reset',
+    getattr(machine, 'WDT_RESET', -3):       'watchdog timeout',
+    getattr(machine, 'DEEPSLEEP_RESET', -4): 'deep-sleep wake',
+    getattr(machine, 'SOFT_RESET', -5):      'soft reset',
+}
+
 
 def main():
     log("--- boot ---")
+    try:
+        cause = machine.reset_cause()
+        log("Reset cause: {} ({})".format(_RESET_CAUSES.get(cause, 'unknown'), cause))
+    except Exception as e:
+        log("Reset cause unavailable:", e)
     t0 = time.ticks_ms()
 
     log("[1/5] Loading config...")
