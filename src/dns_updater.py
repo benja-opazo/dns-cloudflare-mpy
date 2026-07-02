@@ -50,6 +50,35 @@ class DnsUpdater:
             'Content-Type': 'application/json',
         }
 
+    def _cf_config(self):
+        """Return (api_key, zone_id, record_name), or None if any field is unset."""
+        api_key = self.config.get_cf_api_key()
+        zone_id = self.config.get_cf_zone_id()
+        record_name = self.config.get_cf_record_name()
+        if not api_key or not zone_id or not record_name:
+            return None
+        return api_key, zone_id, record_name
+
+    def _get_record(self, api_key, zone_id, record_name):
+        """GET the DNS record by name from Cloudflare.
+
+        Returns (data, record): data is the parsed API response (check
+        data['success'] / data['errors']); record is data['result'][0], or
+        None if the zone has no matching record. Raises on network/parse
+        errors — callers wrap the call with their own contextual logging.
+        """
+        import urequests
+        gc.collect()
+        self._feed()
+        r = urequests.get(CF_BASE + zone_id + CF_RECORDS_EXT + record_name,
+                          headers=self._cf_headers(api_key), timeout=HTTP_TIMEOUT)
+        try:
+            data = r.json()
+        finally:
+            r.close()
+        results = data.get('result') or []
+        return data, (results[0] if results else None)
+
     # ------------------------------------------------------------------ #
     #  Public IP                                                           #
     # ------------------------------------------------------------------ #
@@ -121,38 +150,27 @@ class DnsUpdater:
     def _fetch_cf_status(self):
         """Query Cloudflare for the current record value and validate the API key.
         Sets _cf_status ('valid'/'invalid'/'unconfigured'), _zone_ip, and _record_type."""
-        api_key = self.config.get_cf_api_key()
-        zone_id = self.config.get_cf_zone_id()
-        record_name = self.config.get_cf_record_name()
-
-        if not api_key or not zone_id or not record_name:
+        cfg = self._cf_config()
+        if cfg is None:
             self._cf_status = 'unconfigured'
             log('Cloudflare status: unconfigured (missing api_key/zone_id/record_name)')
             return
+        api_key, zone_id, record_name = cfg
 
-        import urequests
         try:
-            gc.collect()
-            self._feed()
-            r = urequests.get(CF_BASE + zone_id + CF_RECORDS_EXT + record_name,
-                              headers=self._cf_headers(api_key), timeout=HTTP_TIMEOUT)
-            try:
-                data = r.json()
-            finally:
-                r.close()
-            if data.get('success'):
-                self._cf_status = 'valid'
-                results = data.get('result', [])
-                if results:
-                    self._zone_ip = results[0]['content']
-                    self._record_type = results[0]['type']
-                    log(f'Cloudflare status: valid — {self._record_type} record '
-                        f'{record_name} = {self._zone_ip}')
-                else:
-                    log(f'Cloudflare status: valid — no record found for {record_name}')
-            else:
+            data, record = self._get_record(api_key, zone_id, record_name)
+            if not data.get('success'):
                 self._cf_status = 'invalid'
                 log(f'Cloudflare status: invalid — {data.get("errors")}')
+                return
+            self._cf_status = 'valid'
+            if record:
+                self._zone_ip = record['content']
+                self._record_type = record['type']
+                log(f'Cloudflare status: valid — {self._record_type} record '
+                    f'{record_name} = {self._zone_ip}')
+            else:
+                log(f'Cloudflare status: valid — no record found for {record_name}')
         except Exception as e:
             log(f'_fetch_cf_status error [{type(e).__name__}]: {e}')
             gc.collect()
@@ -172,38 +190,25 @@ class DnsUpdater:
 
     def update_dns(self, ip):
         """Update the configured Cloudflare record (A or CNAME) with the new public IP."""
-        api_key = self.config.get_cf_api_key()
-        zone_id = self.config.get_cf_zone_id()
-        record_name = self.config.get_cf_record_name()
-
-        if not api_key or not zone_id or not record_name:
+        cfg = self._cf_config()
+        if cfg is None:
             log('update_dns: Cloudflare config incomplete, skipping')
             return
+        api_key, zone_id, record_name = cfg
 
         if ip == self._zone_ip:
             log(f'update_dns: zone already at {ip} — updating anyway')
 
-        headers = self._cf_headers(api_key)
-        import urequests
-
         # Step 1 — find the record ID and type
         try:
-            gc.collect()
-            self._feed()
-            r = urequests.get(CF_BASE + zone_id + CF_RECORDS_EXT + record_name,
-                              headers=headers, timeout=HTTP_TIMEOUT)
-            try:
-                data = r.json()
-            finally:
-                r.close()
+            data, record = self._get_record(api_key, zone_id, record_name)
             if not data.get('success'):
                 log(f'update_dns: API error fetching record: {data.get("errors")}')
                 self._cf_status = 'invalid'
                 return
-            if not data.get('result'):
+            if not record:
                 log(f'update_dns: record not found for {record_name}')
                 return
-            record = data['result'][0]
             record_id   = record['id']
             record_type = record['type']  # 'A' or 'CNAME'
             self._record_type = record_type
@@ -213,6 +218,8 @@ class DnsUpdater:
             return
 
         # Step 2 — update the record content
+        headers = self._cf_headers(api_key)
+        import urequests
         try:
             url = CF_BASE + zone_id + '/dns_records/' + record_id
             body = json.dumps({'type': record_type, 'name': record_name, 'content': ip, 'ttl': 1})
