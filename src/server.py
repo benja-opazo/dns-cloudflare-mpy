@@ -1,7 +1,9 @@
+import gc
 import json
+import machine
+import os
 import select
 import socket
-import machine
 import time
 from log import log
 from timesync import sync_time
@@ -81,10 +83,10 @@ class Server:
                 self._sock.close()
                 log('  Closed old _sock')
             except Exception as e:
-                log(f'  Could not close _sock: {e}')
+                log(f'  Could not close _sock [{type(e).__name__}]: {e}')
         log('Creating sockets...')
         self._sock = self._make_socket(80)
-        log('Listening — HTTP :80  (' + self.wifi.get_mode() + '  ' + self.wifi.get_ip() + ')')
+        log(f'Listening — HTTP :80  ({self.wifi.get_mode()}  {self.wifi.get_ip()})')
 
     def _restart_sockets(self, poller):
         """Close and recreate the listening socket, updating the poller."""
@@ -102,8 +104,6 @@ class Server:
         log('Socket restarted')
 
     def run_forever(self):
-        import gc
-
         assert self._sock is not None, 'call start() before run_forever()'
 
         # Hardware watchdog: if the poll loop stalls for >15 s (e.g. TCP stack
@@ -158,15 +158,15 @@ class Server:
                 events = poller.poll(20)  # 20 ms — keeps LED tick responsive
                 for fd, _ in events:
                     conn, addr = fd.accept()
-                    log('HTTP from', addr)
+                    log(f'HTTP from {addr}')
                     reboot = False
                     try:
                         reboot = self._handle(conn)
                     except OSError as e:
                         if e.args[0] != 113:  # suppress ECONNABORTED (client hung up)
-                            log('Handler error [' + type(e).__name__ + ']:', e)
+                            log(f'Handler error [{type(e).__name__}]: {e}')
                     except Exception as e:
-                        log('Handler error [' + type(e).__name__ + ']:', e)
+                        log(f'Handler error [{type(e).__name__}]: {e}')
                     finally:
                         conn.close()
                     if reboot:
@@ -188,16 +188,14 @@ class Server:
                     error_streak = 0
                 else:
                     error_streak += 1
-                    log('Poll error [{}/{}] [{}]: {}'.format(
-                        error_streak, MAX_ERRORS, type(e).__name__, e))
+                    log(f'Poll error [{error_streak}/{MAX_ERRORS}] [{type(e).__name__}]: {e}')
                     if error_streak >= MAX_ERRORS:
                         log('Too many consecutive errors — resetting now')
                         machine.reset()
                     self._restart_sockets(poller)
             except Exception as e:
                 error_streak += 1
-                log('Poll error [{}/{}] [{}]: {}'.format(
-                    error_streak, MAX_ERRORS, type(e).__name__, e))
+                log(f'Poll error [{error_streak}/{MAX_ERRORS}] [{type(e).__name__}]: {e}')
                 if error_streak >= MAX_ERRORS:
                     log('Too many consecutive errors — resetting now')
                     machine.reset()
@@ -221,12 +219,12 @@ class Server:
                 if b'\r\n\r\n' in raw:
                     break
         except Exception as e:
-            log('  recv error:', type(e).__name__, e)
+            log(f'  recv error [{type(e).__name__}]: {e}')
 
         sep = raw.find(b'\r\n\r\n')
         if sep == -1:
-            log('  recv: no header terminator ({} bytes, {} ms)'.format(
-                len(raw), time.ticks_diff(time.ticks_ms(), t0)))
+            log(f'  recv: no header terminator ({len(raw)} bytes, '
+                f'{time.ticks_diff(time.ticks_ms(), t0)} ms)')
             return 'GET', '/', ''
 
         # Parse request line (first line only — no full headers dict needed).
@@ -258,8 +256,7 @@ class Server:
         except Exception:
             pass
 
-        log('  recv: {} {} ({} ms)'.format(
-            method, path, time.ticks_diff(time.ticks_ms(), t0)))
+        log(f'  recv: {method} {path} ({time.ticks_diff(time.ticks_ms(), t0)} ms)')
         return method, path, bytes(body[:content_length]).decode('utf-8', 'ignore')
 
     def _send_response(self, conn, status, content_type, body):
@@ -296,7 +293,6 @@ class Server:
     def _serve_static(self, conn, path, content_type):
         """Serve a file in chunks (memory-efficient for large files)."""
         try:
-            import os
             size = os.stat(path)[6]
             log(f'  serve_static: {path}  {size} bytes')
             conn.sendall((
@@ -316,28 +312,26 @@ class Server:
                     conn.sendall(chunk)
                     sent += len(chunk)
             log(f'  serve_static: sent {sent}/{size} bytes  {time.ticks_diff(time.ticks_ms(), t0)} ms')
-        except Exception as err:
-            log(f'  serve_static error: {err}')
-            self._send_response(conn, '404 Not Found', 'text/plain', f'Not found: {path} ({err})')
+        except Exception as e:
+            log(f'  serve_static error [{type(e).__name__}]: {e}')
+            self._send_response(conn, '404 Not Found', 'text/plain', f'Not found: {path} ({e})')
 
     def _serve_template(self, conn, path, content_type, variables):
         """Read template, substitute variables, send with Content-Length."""
-        import gc
         try:
             t0 = time.ticks_ms()
             with open(path, 'r') as f:
                 content = f.read()
             for key, value in variables.items():
                 content = content.replace('{{' + key + '}}', value)
-            log('  serve_template: {} bytes in {} ms'.format(
-                len(content), time.ticks_diff(time.ticks_ms(), t0)))
+            log(f'  serve_template: {len(content)} bytes in {time.ticks_diff(time.ticks_ms(), t0)} ms')
             self._send_response(conn, '200 OK', content_type, content)
             del content
             gc.collect()
-        except Exception as err:
-            log('  serve_template error:', err)
+        except Exception as e:
+            log(f'  serve_template error [{type(e).__name__}]: {e}')
             try:
-                self._send_response(conn, '500 Internal Server Error', 'text/plain', str(err))
+                self._send_response(conn, '500 Internal Server Error', 'text/plain', str(e))
             except Exception:
                 pass
 

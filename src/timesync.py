@@ -18,6 +18,6 @@ def sync_time(wifi):
             log(f'NTP sync OK via {host}')
             return True
         except Exception as e:
-            log(f'NTP via {host} failed: {e}')
+            log(f'NTP via {host} failed [{type(e).__name__}]: {e}')
     log('NTP sync failed — all hosts exhausted, clock left unsynced')
     return False

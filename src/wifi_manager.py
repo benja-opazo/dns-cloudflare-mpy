@@ -33,18 +33,18 @@ class WiFiManager:
         try:
             self.sta.config(pm=network.WLAN.PM_NONE)
             log('  WiFi power-save disabled (PM_NONE)')
-        except Exception as e:
+        except Exception:
             try:
                 self.sta.config(pm=0)
                 log('  WiFi power-save disabled (pm=0)')
             except Exception as e2:
-                log(f'  Could not disable WiFi PM: {e2}')
+                log(f'  Could not disable WiFi PM [{type(e2).__name__}]: {e2}')
         if hostname:
             try:
                 self.sta.config(dhcp_hostname=hostname)
                 log(f'  Hostname: {hostname}')
             except Exception as e:
-                log(f'  Hostname set failed: {e}')
+                log(f'  Hostname set failed [{type(e).__name__}]: {e}')
         if self.sta.isconnected():
             log('STA already connected — disconnecting first')
             self.sta.disconnect()
@@ -109,7 +109,7 @@ class WiFiManager:
             networks.sort(key=lambda x: -x[1])  # RSSI is negative; less negative = stronger
             return networks
         except Exception as e:
-            log('Scan error:', e)
+            log(f'Scan error [{type(e).__name__}]: {e}')
             return []
         finally:
             if not was_active:

@@ -1,6 +1,7 @@
-import time
-import socket
 import network
+import socket
+import time
+from log import fmt_datetime
 
 
 def _connect_wifi():
@@ -129,9 +130,9 @@ def _idf_heap():
         regions = esp32.idf_heap_info(cap)
         total_free = sum(r[1] for r in regions)
         largest = max((r[2] for r in regions), default=0)
-        return 'idf_data free={} largest_block={}'.format(total_free, largest)
+        return f'idf_data free={total_free} largest_block={largest}'
     except Exception as e:
-        return 'idf_heap_info unavailable: {}'.format(e)
+        return f'idf_heap_info unavailable: {e}'
 
 
 def _mem_report(label):
@@ -194,9 +195,7 @@ def run():
         ntptime.host = host
         ntptime.timeout = 5
         ntptime.settime()
-        t = time.localtime()
-        return '{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}'.format(
-            t[0], t[1], t[2], t[3], t[4], t[5])
+        return fmt_datetime()
 
     # These mirror the production host list in timesync.sync_time (gateway,
     # Cloudflare IP, then pool.ntp.org); 216.239.35.0 is an extra Google probe.
@@ -240,7 +239,7 @@ def run():
             p = date.split()
             day, mon, year = int(p[1]), months[p[2]], int(p[3])
             h, m, sec = (int(x) for x in p[4].split(':'))
-            return f'{year}-{mon:02d}-{day:02d} {h:02d}:{m:02d}:{sec:02d}'
+            return fmt_datetime((year, mon, day, h, m, sec))
 
         _test('time from HTTP Date header (api.ipify.org)',
               _time_from_date_header)

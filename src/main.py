@@ -21,23 +21,23 @@ _RESET_CAUSES = {
 
 
 def main():
-    log("--- boot ---")
+    log('--- boot ---')
     try:
         cause = machine.reset_cause()
-        log("Reset cause: {} ({})".format(_RESET_CAUSES.get(cause, 'unknown'), cause))
+        log(f'Reset cause: {_RESET_CAUSES.get(cause, "unknown")} ({cause})')
     except Exception as e:
-        log("Reset cause unavailable:", e)
+        log(f'Reset cause unavailable [{type(e).__name__}]: {e}')
     t0 = time.ticks_ms()
 
-    log("[1/5] Loading config...")
+    log('[1/5] Loading config...')
     config = ConfigManager()
-    log(f"  saved SSID: {config.get_wifi_ssid() or '(none)'}")
+    log(f'  saved SSID: {config.get_wifi_ssid() or "(none)"}')
 
-    log("[2/5] Initialising status LED...")
+    log('[2/5] Initialising status LED...')
     led_pin = config.get_led_pin()
     led = StatusLed(led_pin) if led_pin is not None else StatusLed()
 
-    log("[3/5] Setting up Wi-Fi...")
+    log('[3/5] Setting up Wi-Fi...')
     wifi = WiFiManager()
 
     if config.has_wifi():
@@ -49,27 +49,27 @@ def main():
             led.set_connected()
             sync_time(wifi)
         else:
-            log("Could not connect to saved network — falling back to AP mode")
+            log('Could not connect to saved network — falling back to AP mode')
             wifi.start_ap_mode()
             led.set_ap()
     else:
-        log("No Wi-Fi credentials saved — starting AP mode")
+        log('No Wi-Fi credentials saved — starting AP mode')
         wifi.start_ap_mode()
         led.set_ap()
 
     log(
-        f"  Wi-Fi ready in {time.ticks_diff(time.ticks_ms(), t0)}ms"
-        f"  mode={wifi.get_mode()}  ip={wifi.get_ip()}"
+        f'  Wi-Fi ready in {time.ticks_diff(time.ticks_ms(), t0)}ms'
+        f'  mode={wifi.get_mode()}  ip={wifi.get_ip()}'
     )
 
-    log("[4/5] Creating DNS updater...")
+    log('[4/5] Creating DNS updater...')
     dns_updater = DnsUpdater(wifi, config, led)
 
-    log("[5/5] Starting server...")
+    log('[5/5] Starting server...')
     server = Server(wifi, config, dns_updater, led)
     server.start()
 
-    log(f"Boot complete in {time.ticks_diff(time.ticks_ms(), t0)}ms")
+    log(f'Boot complete in {time.ticks_diff(time.ticks_ms(), t0)}ms')
     server.run_forever()
 
 

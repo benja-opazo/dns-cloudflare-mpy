@@ -28,3 +28,7 @@ MANIFEST
 # Files
 /src/config.json
 *.kra~
+
+# Python bytecode
+__pycache__/
+*.pyc

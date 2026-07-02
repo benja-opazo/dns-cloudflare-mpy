@@ -1,7 +1,7 @@
 import gc
 import json
 import time
-from log import log
+from log import log, fmt_datetime
 
 CHECK_INTERVAL_MS = 60 * 1000  # 1 minute
 HTTP_TIMEOUT = 10  # seconds — bound each request so a hung call can't stall the loop
@@ -42,8 +42,7 @@ class DnsUpdater:
         t = time.localtime()
         if t[0] < 2026:  # clock not yet synced (ESP32 boots at year 2000)
             return None
-        return '{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}'.format(
-            t[0], t[1], t[2], t[3], t[4], t[5])
+        return fmt_datetime(t)
 
     def _cf_headers(self, api_key):
         return {
@@ -69,21 +68,21 @@ class DnsUpdater:
                 ip = r.text.strip()
             finally:
                 r.close()
-            log('Public IP check:', ip)
+            log(f'Public IP check: {ip}')
             return ip
         except Exception as e:
-            log('get_public_ip error:', e)
+            log(f'get_public_ip error [{type(e).__name__}]: {e}')
             gc.collect()
             return None
 
     def _apply_ip(self, ip):
         """Compare ip against the last known value and call update_dns if it changed."""
         if ip != self._last_ip:
-            log('Public IP changed:', self._last_ip, '->', ip)
+            log(f'Public IP changed: {self._last_ip} -> {ip}')
             self._last_ip = ip
             self.update_dns(ip)
         else:
-            log('Public IP unchanged:', ip)
+            log(f'Public IP unchanged: {ip}')
             self._last_ip = ip
 
     def force_check(self):
@@ -97,7 +96,7 @@ class DnsUpdater:
         if self._led and self.wifi.get_mode() == 'client' and self.wifi.is_connected():
             self._led.set_ip_check()
         if self.wifi.get_mode() != 'client':
-            log('IP check skipped — not in client mode (mode={})'.format(self.wifi.get_mode()))
+            log(f'IP check skipped — not in client mode (mode={self.wifi.get_mode()})')
             return None
         if not self.wifi.is_connected():
             log('IP check skipped — Wi-Fi not connected')
@@ -147,15 +146,15 @@ class DnsUpdater:
                 if results:
                     self._zone_ip = results[0]['content']
                     self._record_type = results[0]['type']
-                    log('Cloudflare status: valid — {} record {} = {}'.format(
-                        self._record_type, record_name, self._zone_ip))
+                    log(f'Cloudflare status: valid — {self._record_type} record '
+                        f'{record_name} = {self._zone_ip}')
                 else:
-                    log('Cloudflare status: valid — no record found for', record_name)
+                    log(f'Cloudflare status: valid — no record found for {record_name}')
             else:
                 self._cf_status = 'invalid'
-                log('Cloudflare status: invalid —', data.get('errors'))
+                log(f'Cloudflare status: invalid — {data.get("errors")}')
         except Exception as e:
-            log('_fetch_cf_status error [{}]: {}'.format(type(e).__name__, e))
+            log(f'_fetch_cf_status error [{type(e).__name__}]: {e}')
             gc.collect()
 
     def status(self):
@@ -182,7 +181,7 @@ class DnsUpdater:
             return
 
         if ip == self._zone_ip:
-            log('update_dns: zone already at', ip, '— updating anyway')
+            log(f'update_dns: zone already at {ip} — updating anyway')
 
         headers = self._cf_headers(api_key)
         import urequests
@@ -198,18 +197,18 @@ class DnsUpdater:
             finally:
                 r.close()
             if not data.get('success'):
-                log('update_dns: API error fetching record:', data.get('errors'))
+                log(f'update_dns: API error fetching record: {data.get("errors")}')
                 self._cf_status = 'invalid'
                 return
             if not data.get('result'):
-                log('update_dns: record not found for', record_name)
+                log(f'update_dns: record not found for {record_name}')
                 return
             record = data['result'][0]
             record_id   = record['id']
             record_type = record['type']  # 'A' or 'CNAME'
             self._record_type = record_type
         except Exception as e:
-            log('update_dns: error fetching record id [{}]: {}'.format(type(e).__name__, e))
+            log(f'update_dns: error fetching record id [{type(e).__name__}]: {e}')
             gc.collect()
             return
 
@@ -225,7 +224,7 @@ class DnsUpdater:
             finally:
                 r.close()
             if result.get('success'):
-                log('update_dns: updated', record_name, '->', ip)
+                log(f'update_dns: updated {record_name} -> {ip}')
                 self._zone_ip = ip
                 self._cf_status = 'valid'
                 ts = self._format_time()
@@ -234,10 +233,10 @@ class DnsUpdater:
                 if self._led:
                     self._led.set_dns_update()
             else:
-                log('update_dns: API error:', result.get('errors'))
+                log(f'update_dns: API error: {result.get("errors")}')
                 self._cf_status = 'invalid'
         except Exception as e:
-            log('update_dns: error updating record:', e)
+            log(f'update_dns: error updating record [{type(e).__name__}]: {e}')
 
     # ------------------------------------------------------------------ #
     #  Periodic tick                                                       #

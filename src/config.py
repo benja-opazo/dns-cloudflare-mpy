@@ -13,10 +13,9 @@ class ConfigManager:
         try:
             with open(CONFIG_PATH, 'r') as f:
                 self._cfg = json.load(f)
-            log('Config loaded from', CONFIG_PATH)
+            log(f'Config loaded from {CONFIG_PATH}')
         except Exception as e:
-            log('Config load failed ({}: {}) — using empty defaults'.format(
-                type(e).__name__, e))
+            log(f'Config load failed [{type(e).__name__}]: {e} — using empty defaults')
             self._cfg = {
                 'wifi': {'ssid': '', 'password': '', 'hostname': 'esp32-dns'},
                 'cloudflare': {'api_key': '', 'zone_id': '', 'record_name': ''}
@@ -28,7 +27,7 @@ class ConfigManager:
                 json.dump(self._cfg, f)
             return True
         except Exception as e:
-            log('Config save error:', e)
+            log(f'Config save error [{type(e).__name__}]: {e}')
             return False
 
     def set_wifi(self, ssid, password):
